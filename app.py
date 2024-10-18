@@ -1,5 +1,4 @@
 import streamlit as st
-#from langchain.llms import OpenAI #this import has been replaced by the below recently please :)
 from langchain_openai import OpenAI
 
 from langchain.prompts import PromptTemplate
@@ -117,6 +116,15 @@ def getLLMResponse(query,job_type,tasktype_option):
     print(response)
 
     return response
+
+#############################################################
+# New section for handling file upload and extracting content
+def extract_text_from_uploaded_file(uploaded_file):
+    if uploaded_file is not None:
+        # Assuming it's a text file for now
+        file_content = uploaded_file.read().decode("utf-8")
+        return file_content
+    return None
 
 #UI Starts here
 
