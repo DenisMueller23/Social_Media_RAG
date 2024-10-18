@@ -38,7 +38,7 @@ def getLLMResponse(query,job_type,tasktype_option):
         }
         ]
     
-    elif job_type=="Business Person":  #Curious and Intelligent adult 
+    elif job_type=="Business Person":  
         examples = [
         {
             "query": "What do you prioritize when making business decisions?",
@@ -54,7 +54,7 @@ def getLLMResponse(query,job_type,tasktype_option):
             "answer": "Balancing innovation and risk management is about careful planning. I encourage creative thinking and experimentation but always within a framework that assesses potential risks. It’s about taking calculated risks, not reckless ones."
         }
         ]
-    elif job_type=="C-Level Strategist": #A 90 years old guys
+    elif job_type=="C-Level Strategist": 
         examples = [
         {
             "query": "What do you consider when shaping a company's legacy?",
@@ -134,6 +134,13 @@ st.set_page_config(page_title="Social Media RAG App",
                     initial_sidebar_state='auto')
 st.header("Hey, let's move your personal brand forward?")
 
+# File Uploader for Drag-and-Drop
+uploaded_file = st.file_uploader("Upload your document for querying", type=["txt", "pdf"])
+
+if uploaded_file is not None:
+    file_content = extract_text_from_uploaded_file(uploaded_file)
+    st.text_area("Document Content", value=file_content, height=150)
+
 form_input = st.text_area('Enter text', height=275)
 
 tasktype_option = st.selectbox(
@@ -142,7 +149,7 @@ tasktype_option = st.selectbox(
 
 age_option= st.selectbox(
     'For which age group?',
-    ('Kid', 'Adult', 'senior Citizen'),key=2)
+    ('Data Scientist', 'Business Person', 'C-Level Strategist'),key=2)
 
 numberOfWords= st.slider('Words limit', 1, 200, 25)
 
