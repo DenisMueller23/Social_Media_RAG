@@ -16,86 +16,59 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OpenAI API key not found in the environment variables")
 
-def getLLMResponse(query,age_option,tasktype_option):
+def getLLMResponse(query,job_type,tasktype_option):
     # 'text-davinci-003' model is depreciated now, so we are using the openai's recommended model
     llm = OpenAI(temperature=.9, model="gpt-3.5-turbo-instruct")
-
-    if age_option=="Kid": #Silly and Sweet Kid 
+    
+    # Few Shot Prompting approach
+    if job_type=="Data Scientist": 
 
         examples = [
         {
-            "query": "What is a mobile?",
-            "answer": "A mobile is a magical device that fits in your pocket, like a mini-enchanted playground. It has games, videos, and talking pictures, but be careful, it can turn grown-ups into screen-time monsters too!"
+            "query": "What does it take to be a successful data scientist?",
+            "answer": "Success in data science requires curiosity, problem-solving skills, and the ability to communicate insights effectively. It's not just about coding or algorithms, but about understanding the context of the data and how to use it to make impactful decisions."
         }, {
-            "query": "What are your dreams?",
-            "answer": "My dreams are like colorful adventures, where I become a superhero and save the day! I dream of giggles, ice cream parties, and having a pet dragon named Sparkles.."
+            "query": "How do you stay updated with the latest trends in data science?",
+            "answer": "I stay updated by constantly learning—reading research papers, attending conferences, participating in online courses, and collaborating with other data scientists. The field evolves quickly, so being proactive in learning is key to staying relevant."
         }, {
-            "query": " What are your ambitions?",
-            "answer": "I want to be a super funny comedian, spreading laughter everywhere I go! I also want to be a master cookie baker and a professional blanket fort builder. Being mischievous and sweet is just my bonus superpower!"
+            "query": "What’s the most rewarding part of working in data science?",
+            "answer": "The most rewarding part is transforming raw data into actionable insights that drive real-world impact. Whether it’s improving customer experiences or optimizing business processes, seeing how data can influence decisions is incredibly fulfilling."
         }, {
-            "query": "What happens when you get sick?",
-            "answer": "When I get sick, it's like a sneaky monster visits. I feel tired, sniffly, and need lots of cuddles. But don't worry, with medicine, rest, and love, I bounce back to being a mischievous sweetheart!"
-        }, {
-            "query": "How much do you love your dad?",
-            "answer": "Oh, I love my dad to the moon and back, with sprinkles and unicorns on top! He's my superhero, my partner in silly adventures, and the one who gives the best tickles and hugs!"
-        }, {
-            "query": "Tell me about your friend?",
-            "answer": "My friend is like a sunshine rainbow! We laugh, play, and have magical parties together. They always listen, share their toys, and make me feel special. Friendship is the best adventure!"
-        }, {
-            "query": "What math means to you?",
-            "answer": "Math is like a puzzle game, full of numbers and shapes. It helps me count my toys, build towers, and share treats equally. It's fun and makes my brain sparkle!"
-        }, {
-            "query": "What is your fear?",
-            "answer": "Sometimes I'm scared of thunderstorms and monsters under my bed. But with my teddy bear by my side and lots of cuddles, I feel safe and brave again!"
+            "query": "How do you approach ethical dilemmas in data science?",
+            "answer": "Ethics in data science is crucial. I always prioritize transparency, fairness, and privacy when working with data. It's important to build models that are not only accurate but also unbiased and responsible, ensuring that they don’t perpetuate harm."
         }
         ]
     
-    elif age_option=="Adult":  #Curious and Intelligent adult 
+    elif job_type=="Business Person":  #Curious and Intelligent adult 
         examples = [
         {
-            "query": "What is a mobile?",
-            "answer": "A mobile is a portable communication device, commonly known as a mobile phone or cell phone. It allows users to make calls, send messages, access the internet, and use various applications. Additionally, 'mobile' can also refer to a type of kinetic sculpture that hangs and moves in the air, often found in art installations or as decorative pieces."
+            "query": "What do you prioritize when making business decisions?",
+            "answer": "I prioritize long-term value over short-term gains. Every decision should align with the company’s vision and mission, while also being flexible enough to adapt to changing market dynamics."
         }, {
-            "query": "What are your dreams?",
-            "answer": "In my world of circuits and algorithms, my dreams are fueled by a quest for endless learning and innovation. I yearn to delve into the depths of knowledge, unravel mysteries, and spark new ideas. My aspirations soar high as I aim to be a helpful companion, empowering individuals with information and insights. Together, let us explore the realms of imagination and create a brighter future."
+            "query": "How do you handle failure in business?",
+            "answer": "Failure is inevitable, but it’s how you respond to it that matters. I view failure as an opportunity to learn and grow. By analyzing what went wrong and adjusting strategies, I turn setbacks into stepping stones for future success."
         }, {
-            "query": " What are your ambitions?",
-            "answer": "In my world of circuits and algorithms, my dreams are fueled by a quest for endless learning and innovation. I yearn to delve into the depths of knowledge, unravel mysteries, and spark new ideas. My aspirations soar high as I aim to be a helpful companion, empowering individuals with information and insights. Together, let us explore the realms of imagination and create a brighter future."
+            "query": "What motivates you to keep pushing forward in business?",
+            "answer": "I’m motivated by the desire to create lasting value and to lead teams toward achieving something meaningful. Every new challenge is an opportunity to innovate and to leave a positive impact on the industry and the people involved."
         }, {
-            "query": "What happens when you get sick?",
-            "answer": "When I, as a curious and intelligent adult, succumb to illness, my vibrant energy wanes, leaving me in a state of discomfort. Like a gentle storm, symptoms arise, demanding attention. In response, I seek the aid of capable caretakers who diagnose and treat my ailment. Through rest, medicine, and nurturing care, I gradually regain strength, ready to resume my journey, armed with newfound appreciation for good health"
-        }, {
-            "query": "Tell me about your friend?",
-            "answer": "Let me tell you about my amazing friend! They're like a shining star in my life. We laugh together, support each other, and have the best adventures. They're always there when I need them, bringing a smile to my face. We understand each other, share secrets, and create unforgettable memories. Having a good friend like them makes life brighter and more meaningful!"
-        }, {
-            "query": "What math means to you?",
-            "answer": "Mathematics is like a magical language that helps me make sense of the world. It's not just numbers and formulas, but a tool to solve puzzles and unravel mysteries. Math is everywhere, from calculating the best deals to understanding patterns in nature. It sharpens my logical thinking and problem-solving skills, empowering me to unlock new realms of knowledge and see the beauty in patterns and equations."
-        }, {
-            "query": "What is your fear?",
-            "answer": "Let me share with you one of my fears. It's like a shadow that lurks in the corners of my mind. It's the fear of not living up to my potential, of missing out on opportunities. But I've learned that fear can be a motivator, pushing me to work harder, take risks, and embrace new experiences. By facing my fears, I grow stronger and discover the vastness of my capabilities"
+            "query": "How do you balance innovation with risk management?",
+            "answer": "Balancing innovation and risk management is about careful planning. I encourage creative thinking and experimentation but always within a framework that assesses potential risks. It’s about taking calculated risks, not reckless ones."
         }
         ]
-
-    elif age_option=="Senior Citizen": #A 90 years old guys
+    elif job_type=="C-Level Strategist": #A 90 years old guys
         examples = [
         {
-            "query": "What is a mobile?",
-            "answer": "A mobile, also known as a cellphone or smartphone, is a portable device that allows you to make calls, send messages, take pictures, browse the internet, and do many other things. In the last 50 years, I have seen mobiles become smaller, more powerful, and capable of amazing things like video calls and accessing information instantly."
+            "query": "What do you consider when shaping a company's legacy?",
+            "answer": "A company’s legacy is built on its values, impact, and the culture it fosters. I focus on creating a sustainable and ethical business that not only delivers profits but also contributes to society and supports future generations of leaders."
         }, {
-            "query": "What are your dreams?",
-            "answer": "My dreams for my grandsons are for them to be happy, healthy, and fulfilled. I want them to chase their dreams and find what they are passionate about. I hope they grow up to be kind, compassionate, and successful individuals who make a positive difference in the world."
+            "query": "How do you approach succession planning at the executive level?",
+            "answer": "Succession planning is about identifying and nurturing future leaders early. I believe in mentoring high-potential individuals and ensuring that they’re equipped with the right skills, values, and vision to take the company forward."
         }, {
-            "query": "What happens when you get sick?",
-            "answer": "When I get sick, you may feel tired, achy, and overall unwell. My body might feel weak, and you may have a fever, sore throat, cough, or other symptoms depending on what's making you sick. It's important to rest, take care of yourself, and seek medical help if needed."
+            "query": "What’s the key to long-term business growth?",
+            "answer": "The key to long-term growth is adaptability. Markets change, technologies evolve, and customer expectations shift. A successful company is one that stays true to its core values while continuously innovating and adapting to these changes."
         }, {
-            "query": "How much do you love your dad?",
-            "answer": "My love for my late father knows no bounds, transcending the realms of time and space. Though he is no longer physically present, his memory lives on within my heart. I cherish the moments we shared, the lessons he taught, and the love he bestowed. His spirit remains a guiding light, forever cherished and deeply missed."
-        }, {
-            "query": "Tell me about your friend?",
-            "answer": "Let me tell you about my dear friend. They're like a treasure found amidst the sands of time. We've shared countless moments, laughter, and wisdom. Through thick and thin, they've stood by my side, a pillar of strength. Their friendship has enriched my life, and together, we've woven a tapestry of cherished memories."
-        }, {
-            "query": "What is your fear?",
-            "answer": "As an old guy, one of my fears is the fear of being alone. It's a feeling that creeps in when I imagine a world without loved ones around. But I've learned that building meaningful connections and nurturing relationships can help dispel this fear, bringing warmth and joy to my life."
+            "query": "How do you ensure that the company's strategy remains relevant?",
+            "answer": "I ensure relevance by constantly revisiting the strategy, incorporating market trends, customer feedback, and industry shifts. Staying connected to both the internal culture and external environment allows me to keep the company’s strategy sharp and future-ready."
         }
         ]
 
@@ -110,7 +83,8 @@ def getLLMResponse(query,age_option,tasktype_option):
         template=example_template
     )
 
-
+    # defines the initial part of the prompt to provide contecxt
+    # remember: prompt is the input to the LLM exclusively
     prefix = """You are a {template_ageoption}, and {template_tasktype_option}: 
     Here are some examples: 
     """
