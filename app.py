@@ -126,20 +126,61 @@ def extract_text_from_uploaded_file(uploaded_file):
         return file_content
     return None
 
-#UI Starts here
+# UI Starts here
 
+# configure general settings
 st.set_page_config(page_title="Social Media RAG App",
                     page_icon='✅',
                     layout='centered',
                     initial_sidebar_state='auto')
 st.header("Hey, let's move your personal brand forward?")
 
+
+# change color coding / style
+## Background, Slider and font color
+st.markdown(
+    """
+    <style>
+    /* Change background color to dark grey */
+    .stApp {
+        background-color: #2F2F2F;  /* Dark grey */
+    }
+
+    /* Change font color for better contrast */
+    .stApp h1, .stApp p, .stApp label, .stApp div, .stApp input {
+        color: #FFFFFF;  /* White text */
+    }
+
+    /* Style for the slider bar (range input) */
+    .stSlider > div > div > div > input[type="range"] {
+        accent-color: lightblue;  /* Light blue slider thumb */
+    }
+
+    /* Change the track background (the bar) */
+    .stSlider > div > div > div > div {
+        background: lightblue !important;  /* Light blue bar */
+    }
+
+    /* Change selection box (dropdown) text color to black */
+    .stSelectbox div[data-testid="stMarkdownContainer"] * {
+        color: #000000 !important;  /* Black font for selection options */
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # File Uploader for Drag-and-Drop
 uploaded_file = st.file_uploader("Upload your document for querying", type=["txt", "pdf"])
 
 if uploaded_file is not None:
     file_content = extract_text_from_uploaded_file(uploaded_file)
-    st.text_area("Document Content", value=file_content, height=150)
+    
+    if file_content:
+        st.text_area("Document Content Preview", value=file_content[:500], height=150)  # Show first 500 characters
+    else:
+        st.write("Could not extract content from the file.")
 
 form_input = st.text_area('Enter text', height=275)
 
