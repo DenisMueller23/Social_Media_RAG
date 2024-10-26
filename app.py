@@ -1,8 +1,9 @@
 import streamlit as st
 from langchain_openai import OpenAI
-
-from langchain.prompts import PromptTemplate
-from langchain.prompts import FewShotPromptTemplate
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+import pinecone
+from langchain.prompts import FewShotPromptTemplate, PromptTemplate
 from langchain.prompts.example_selector import LengthBasedExampleSelector
 from dotenv import load_dotenv
 import os
@@ -12,9 +13,25 @@ load_dotenv()
 
 # Fetch the OpenAI API key from the environment
 openai_api_key = os.getenv("OPENAI_API_KEY")
+pinecone_env = os.getenv("PINECONE_ENV")
+pinecone_api_key = os.getenv("PINCONE_API_KEY")
+
+# initialize pinecone
+pinecone.init(openai_api_key=pinecone_api_key, environment=pinecone_env)
+
+# Create or connect to Pinecone index
+index_name = "pdf-embedding-index"
+if index_name not in pinecone.list_indexes():
+    pinecone.create_index(index_name, dimension=1536)  # Using OpenAI embeddings dimension
+index = pinecone.Index(index_name)
+
+# Create OpenAI embeddings object
+embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
 
 if not openai_api_key:
     raise ValueError("OpenAI API key not found in the environment variables")
+if not pinecone_api_key:
+    raise ValueError("Pinecone key not found in the environment variables")
 
 def getLLMResponse(query,job_type,tasktype_option, pdf_content=None):
     # 'text-davinci-003' model is depreciated now, so we are using the openai's recommended model
