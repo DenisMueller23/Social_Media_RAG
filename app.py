@@ -6,6 +6,7 @@ from langchain.prompts import FewShotPromptTemplate
 from langchain.prompts.example_selector import LengthBasedExampleSelector
 from dotenv import load_dotenv
 import os
+import PyPDF2
 
 load_dotenv()
 
@@ -15,7 +16,7 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OpenAI API key not found in the environment variables")
 
-def getLLMResponse(query,job_type,tasktype_option):
+def getLLMResponse(query,job_type,tasktype_option, pdf_content=None):
     # 'text-davinci-003' model is depreciated now, so we are using the openai's recommended model
     llm = OpenAI(temperature=.9, model="gpt-3.5-turbo-instruct")
     
@@ -108,47 +109,66 @@ def getLLMResponse(query,job_type,tasktype_option):
         example_separator="\n"
     )
 
+    # Include the PDF content in the prompt (if available)
+    if pdf_content:
+        # Combine the PDF content with the user's query, making it clear the query is about the document
+        combined_query = f"Here is the content of the document:\n\n{pdf_content}\n\nUser's question: {query}"
+    else:
+        combined_query = query
+    
+    # Format the few shot prompts so it contains all the selected parameters as well as PDF input context
+    prompt = new_prompt_template.format(
+        template_userInput=combined_query,
+        template_ageoption=job_type,
+        template_tasktype_option=tasktype_option
+    )
   
-    print(new_prompt_template.format(template_userInput=query,template_ageoption=age_option,template_tasktype_option=tasktype_option))
+    # print(new_prompt_template.format(template_userInput=query,template_ageoption=age_option,template_tasktype_option=tasktype_option))
 
     #Recently langchain has recommended to use invoke function for the below please :)
-    response=llm.invoke(new_prompt_template.format(template_userInput=query,template_ageoption=age_option,template_tasktype_option=tasktype_option))
-    print(response)
+    response=llm.invoke(prompt)
 
     return response
 
-#############################################################
-# New section for handling file upload and extracting content
-def extract_text_from_uploaded_file(uploaded_file):
-    if uploaded_file is not None:
-        # Assuming it's a text file for now
-        file_content = uploaded_file.read().decode("utf-8")
-        return file_content
-    return None
 
-# UI Starts here
 
 # configure general settings
 st.set_page_config(page_title="Social Media RAG App",
                     page_icon='✅',
                     layout='centered',
                     initial_sidebar_state='auto')
+
+
+def extract_text_from_uploaded_file(uploaded_file):
+    # Check if the file is a PDF
+    if uploaded_file.type == "application/pdf":
+        # Read PDF file using PyPDF2
+        pdf_reader = PyPDF2.PdfReader(uploaded_file)
+        text = ""
+        for page_num in range(len(pdf_reader.pages)):
+            page = pdf_reader.pages[page_num]
+            text += page.extract_text()
+        return text
+    else:
+        # For non-PDF files, decode as UTF-8 (assuming it's a text-based file)
+        return uploaded_file.read().decode("utf-8")
 st.header("Hey, let's move your personal brand forward?")
 
+# UI Starts here
 
 # change color coding / style
 ## Background, Slider and font color
 st.markdown(
     """
     <style>
-    /* Change background color to dark grey */
+    /* Change background color to light brown */
     .stApp {
-        background-color: #2F2F2F;  /* Dark grey */
+        background-color: #D2B48C;  /* Light brown (tan) */
     }
 
-    /* Change font color for better contrast */
-    .stApp h1, .stApp p, .stApp label, .stApp div, .stApp input {
-        color: #FFFFFF;  /* White text */
+    /* Change all text (labels, input boxes, dropdowns) to dark grey */
+    .stApp h1, .stApp p, .stApp label, .stApp div, .stApp input, .stApp textarea {
+        color: #2F2F2F;  /* Dark grey font */
     }
 
     /* Style for the slider bar (range input) */
@@ -158,12 +178,22 @@ st.markdown(
 
     /* Change the track background (the bar) */
     .stSlider > div > div > div > div {
-        background: lightblue !important;  /* Light blue bar */
+        background: black !important;  /* black bar */
     }
 
-    /* Change selection box (dropdown) text color to black */
+    /* Change font color in select box options */
     .stSelectbox div[data-testid="stMarkdownContainer"] * {
-        color: #000000 !important;  /* Black font for selection options */
+        color: #2F2F2F !important;  /* Dark grey font for selection options */
+    }
+
+    /* Change font color in the box where the selected value is shown */
+    .stSelectbox>div>div>div>div {
+        color: #2F2F2F !important;  /* Dark grey font for selected value in dropdown */
+    }
+
+    /* Change font color in file uploader box (drag-and-drop area) */
+    .stFileUploader label, .stFileUploader div {
+        color: #2F2F2F !important;  /* Dark grey font in file uploader */
     }
 
     </style>
