@@ -1,144 +1,136 @@
 import streamlit as st
-import os
-from typing import List, Dict
 import PyPDF2
-import openai
-from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings  # Updated import
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI    # Updated import
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
+from langchain_community.vectorstores import FAISS    # Updated import
 
-class LinkedInPostGenerator:
+class SimplePostGenerator:
     def __init__(self):
-        # Configuration and setup
-        self.setup_environment()
-        self.vector_store = None
-        self.retrieval_chain = None
-
-    def setup_environment(self):
-        """
-        Set up environment variables and API configurations
-        """
-        # Ensure these are set in your .env or through Streamlit secrets
-        openai.api_key = st.secrets.get("OPENAI_API_KEY")
-        self.embeddings = OpenAIEmbeddings()
+        # Initialize OpenAI
+        self.embeddings = OpenAIEmbeddings(openai_api_key=st.secrets["OPENAI_API_KEY"])
         self.llm = ChatOpenAI(
-            model="gpt-3.5-turbo", 
+            openai_api_key=st.secrets["OPENAI_API_KEY"],
+            model="gpt-3.5-turbo",
             temperature=0.7
         )
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+        self.vector_store = None
 
-    def extract_text_from_pdf(self, uploaded_file) -> str:
-        """
-        Extract text from uploaded PDF file
-        """
-        pdf_reader = PyPDF2.PdfReader(uploaded_file)
+    def process_pdf(self, pdf_file):
+        """Process PDF and create vector store"""
+        # Read PDF
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
         text = ""
         for page in pdf_reader.pages:
             text += page.extract_text() or ""
-        return text
 
-    def create_vector_store(self, text: str):
-        """
-        Create vector store from extracted text
-        """
+        # Split text
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, 
+            chunk_size=1000,
             chunk_overlap=200
         )
         texts = text_splitter.split_text(text)
+
+        # Create vector store
+        self.vector_store = FAISS.from_texts(texts, self.embeddings)
+        return text
+
+    def generate_post(self, query, context=None):
+        """Generate LinkedIn post"""
+        prompt = f"""
+        Create an engaging LinkedIn post about: {query}
         
-        self.vector_store = FAISS.from_texts(
-            texts, 
-            self.embeddings
-        )
-
-    def generate_linkedin_posts(self, context: str, num_posts: int = 3) -> List[str]:
+        Guidelines:
+        1. Start with an attention-grabbing hook
+        2. Include 2-3 key points
+        3. End with a call-to-action
+        4. Add relevant hashtags
+        Keep it professional and under 3 paragraphs.
         """
-        Generate LinkedIn post suggestions based on context
-        """
-        post_prompt = PromptTemplate(
-            input_variables=["context"],
-            template="""
-            Given the following context about a professional topic, 
-            generate {num_posts} unique and engaging LinkedIn post suggestions 
-            that highlight key insights, add professional value, 
-            and encourage audience interaction:
+        
+        response = self.llm.predict(prompt)
+        return response
 
-            Context: {context}
+    def chat_with_pdf(self, query):
+        """Chat with PDF content"""
+        if not self.vector_store:
+            return "Please upload and process a PDF first."
 
-            For each post, provide:
-            1. A compelling hook
-            2. 3-4 key points
-            3. A call-to-action or thought-provoking question
-            4. Relevant hashtags
-            """
-        )
-
-        # Create retrieval chain
-        retrieval_qa = RetrievalQA.from_chain_type(
+        chain = ConversationalRetrievalChain.from_llm(
             llm=self.llm,
-            chain_type="stuff",
             retriever=self.vector_store.as_retriever(),
-            chain_type_kwargs={
-                "prompt": post_prompt
-            }
+            memory=self.memory
         )
-
-        # Generate posts
-        posts = []
-        for i in range(num_posts):
-            post = retrieval_qa.run(f"Generate a unique LinkedIn post about the context, focusing on professional insights")
-            posts.append(post)
-
-        return posts
+        
+        response = chain({"question": query})
+        return response['answer']
 
 def main():
-    st.title("🚀 LinkedIn Post Generator with RAG")
-    
-    # Sidebar for configuration
-    st.sidebar.header("Document Upload")
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload PDF", 
-        type=['pdf'], 
-        help="Upload a PDF to extract professional context"
-    )
-    
-    # Number of posts slider
-    num_posts = st.sidebar.slider(
-        "Number of Post Suggestions", 
-        min_value=1, 
-        max_value=5, 
-        value=3
-    )
+    st.title("📱 LinkedIn Post Generator")
+    st.write("Upload a PDF and generate engaging LinkedIn posts!")
 
-    # Main application logic
-    post_generator = LinkedInPostGenerator()
+    # Initialize generator
+    if 'generator' not in st.session_state:
+        st.session_state.generator = SimplePostGenerator()
 
-    if uploaded_file is not None:
-        with st.spinner("Processing PDF..."):
-            # Extract text from PDF
-            pdf_text = post_generator.extract_text_from_pdf(uploaded_file)
-            
-            # Create vector store
-            post_generator.create_vector_store(pdf_text)
-            
-            # Generate posts
-            posts = post_generator.generate_linkedin_posts(
-                context=pdf_text, 
-                num_posts=num_posts
-            )
-            
-            # Display posts
-            st.header("🔥 Generated LinkedIn Post Suggestions")
-            for i, post in enumerate(posts, 1):
-                with st.expander(f"Post {i}"):
-                    st.write(post)
-                    st.button(f"Copy Post {i}", key=f"copy_{i}")
+    # Initialize chat history
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
 
-    else:
-        st.info("Upload a PDF to generate LinkedIn post suggestions")
+    # Sidebar for PDF upload
+    with st.sidebar:
+        st.header("📄 Document Upload")
+        uploaded_file = st.file_uploader("Upload PDF", type=['pdf'])
+        
+        if uploaded_file:
+            if st.button("Process PDF"):
+                with st.spinner("Processing PDF..."):
+                    try:
+                        st.session_state.generator.process_pdf(uploaded_file)
+                        st.success("PDF processed successfully!")
+                    except Exception as e:
+                        st.error(f"Error processing PDF: {str(e)}")
+
+    # Main area
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.header("🎯 Generate Post")
+        post_topic = st.text_area("What would you like to post about?")
+        
+        if post_topic and st.button("Generate Post"):
+            with st.spinner("Generating post..."):
+                try:
+                    post = st.session_state.generator.generate_post(post_topic)
+                    st.text_area("Generated Post", post, height=300)
+                except Exception as e:
+                    st.error(f"Error generating post: {str(e)}")
+
+    with col2:
+        st.header("💬 Chat with PDF")
+        question = st.text_input("Ask about your document:")
+        
+        if question and st.button("Ask"):
+            try:
+                response = st.session_state.generator.chat_with_pdf(question)
+                st.session_state.chat_history.append(("You", question))
+                st.session_state.chat_history.append(("Assistant", response))
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+        # Display chat history
+        for role, message in st.session_state.chat_history:
+            with st.container():
+                if role == "You":
+                    st.write(f"👤 **You:** {message}")
+                else:
+                    st.write(f"🤖 **Assistant:** {message}")
 
 if __name__ == "__main__":
     main()
