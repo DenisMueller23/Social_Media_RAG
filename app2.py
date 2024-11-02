@@ -7,6 +7,11 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_community.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
+import torch
+from diffusers import StableDiffusionPipeline
+import gc
+import os
+import psutil
 
 class SimplePostGenerator:
     def __init__(self):
@@ -74,25 +79,15 @@ class SimplePostGenerator:
                 {context}
 
                 Important guidelines:
-                1. Present insights directly
+                1. Present insights directly and objectively
                 2. Do NOT mention or reference that these insights come from a paper, report, research, or any other document type
-                3. Write as if you are sharing your professional knowledge while using a LinkedIn friendly layout
+                3. Write as if you are sharing your professional knowledge
                 4. Focus on the facts and insights themselves
-                5. Start with an attention-grabbing statement about the topic that always includes a fitting emoji
+                5. Start with an attention-grabbing statement about the topic
                 6. Include 2-3 concrete insights or findings
                 7. End with a thought-provoking question or call-to-action
                 8. Add relevant hashtags
                 9. Keep it under 3 paragraphs
-                
-                Example format:
-                [Attention-grabbing statement about the topic]
-                
-                [Key insight 1 presented as a direct observation]
-                [Key insight 2 presented as industry knowledge]
-                
-                [Engaging question for the audience] #relevanthashtag1 #relevanthashtag2
-
-                Remember: Maintain a professional tone but write as if sharing personal industry knowledge, not summarizing a document.
                 """
             else:
                 prompt = f"""
@@ -108,26 +103,6 @@ class SimplePostGenerator:
                 """
             
             response = self.llm.predict(prompt)
-            
-            # Additional check to remove any reference to papers or research
-            forbidden_terms = ['paper', 'research', 'study', 'report', 'analysis', 'findings', 'document']
-            response_lower = response.lower()
-            
-            if any(term in response_lower for term in forbidden_terms):
-                # If forbidden terms are found, regenerate with stricter prompt
-                strict_prompt = f"""
-                Rewrite this LinkedIn post removing any reference to papers, research, studies, or documents:
-
-                {response}
-
-                Requirements:
-                1. Present all insights as direct professional knowledge
-                2. Remove any academic or research-related language
-                3. Maintain the same key points but express them as industry observations
-                4. Keep the engaging and professional tone
-                """
-                response = self.llm.predict(strict_prompt)
-            
             return response
         except Exception as e:
             st.error(f"Error in post generation: {str(e)}")
@@ -169,41 +144,145 @@ class SimplePostGenerator:
             )
             
             result = chain({"question": query})
-            
-            # Display relevant chunks in expandable section
-            with st.expander("View relevant document sections"):
-                for i, doc in enumerate(result['source_documents']):
-                    st.write(f"Relevant section {i+1}:")
-                    st.write(doc.page_content)
-                    st.write("---")
-            
             return result['answer']
 
         except Exception as e:
             st.error(f"Error in chat: {str(e)}")
             raise
 
-def main():
+class M1ResourceMonitor:
+    """Monitor system resources for M1 Mac"""
+    @staticmethod
+    def check_memory():
+        try:
+            memory = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024  # GB
+            return memory < 14  # Leave 2GB for system
+        except Exception:
+            return True  # Default to True if unable to check memory
 
+    @staticmethod
+    def cleanup():
+        try:
+            # Check if MPS is available using hasattr
+            if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
+                torch.mps.empty_cache()
+            gc.collect()
+        except Exception:
+            gc.collect()
+
+class M1OptimizedGenerator:
+    def __init__(self):
+        """Initialize Stable Diffusion optimized for M1 MacBook Air"""
+        self.model_id = "runwayml/stable-diffusion-v1-5"
+        self.device = self._get_device()
+        self.pipe = None
+        self.resource_monitor = M1ResourceMonitor()
+        self.setup_pipeline()
+
+    def _get_device(self):
+        """Determine the best available device"""
+        if hasattr(torch, 'mps') and torch.backends.mps.is_available():
+            return "mps"
+        elif torch.cuda.is_available():
+            return "cuda"
+        return "cpu"
+
+    def setup_pipeline(self):
+        """Set up pipeline with M1-specific optimizations"""
+        try:
+            st.write("Initializing Stable Diffusion...")
+            
+            self.pipe = StableDiffusionPipeline.from_pretrained(
+                self.model_id,
+                torch_dtype=torch.float32,
+                safety_checker=None,
+                requires_safety_checker=False
+            )
+            
+            if self.device == "mps":
+                st.success("✅ Using M1 Metal acceleration!")
+                self.pipe = self.pipe.to(self.device)
+            elif self.device == "cuda":
+                st.success("✅ Using CUDA acceleration!")
+                self.pipe = self.pipe.to(self.device)
+            else:
+                st.warning("⚠️ Running on CPU - performance will be limited")
+            
+            self.pipe.enable_attention_slicing(slice_size="max")
+            
+            st.success("✅ Pipeline ready!")
+            
+        except Exception as e:
+            st.error(f"Setup error: {str(e)}")
+            raise
+
+    def generate_image(self, prompt: str, height: int = 512, width: int = 512, 
+                      num_inference_steps: int = 20, guidance_scale: float = 7.5):
+        """Generate image with M1 optimization and memory management"""
+        try:
+            if not self.resource_monitor.check_memory():
+                self.resource_monitor.cleanup()
+                
+            with st.spinner("🎨 Generating image (1-2 minutes)..."):
+                try:
+                    image = self.pipe(
+                        prompt=prompt,
+                        height=min(height, 512),
+                        width=min(width, 512),
+                        num_inference_steps=min(num_inference_steps, 25),
+                        guidance_scale=guidance_scale
+                    ).images[0]
+                    
+                    self.resource_monitor.cleanup()
+                    return image
+                    
+                except RuntimeError as e:
+                    st.warning("⚠️ Attempting memory recovery...")
+                    self.resource_monitor.cleanup()
+                    
+                    return self.pipe(
+                        prompt=prompt,
+                        height=384,
+                        width=384,
+                        num_inference_steps=15,
+                        guidance_scale=guidance_scale
+                    ).images[0]
+                
+        except Exception as e:
+            st.error(f"Generation error: {str(e)}")
+            return None
+
+def main():
     st.set_page_config(
-        page_title="LinkedIn Post Generator",
+        page_title="RAG LinkedIn App",
         page_icon="📱",
         layout="wide"
-
     )
+
     st.title("📱 LinkedIn Post Generator & PDF Chat")
-    
+
+    # Initialize text generation components first
     if 'generator' not in st.session_state:
-        st.session_state.generator = SimplePostGenerator()
+        with st.spinner("Initializing text generation components..."):
+            st.session_state.generator = SimplePostGenerator()
+            st.success("✅ Text generation ready!")
 
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+
+    # Defer image generation initialization
+    if 'image_generator_initialized' not in st.session_state:
+        st.session_state.image_generator_initialized = False
 
     with st.sidebar:
         st.header("📄 Document Upload")
         uploaded_file = st.file_uploader("Upload PDF", type=['pdf'])
         
         if uploaded_file:
+            file_size = uploaded_file.size / (1024 * 1024)
+            if file_size > 50:
+                st.warning("⚠️ Large PDF files might impact performance")
+            
             if st.button("Process PDF"):
                 with st.spinner("Processing PDF..."):
                     try:
@@ -213,23 +292,64 @@ def main():
                     except Exception as e:
                         st.error(f"Error processing PDF: {str(e)}")
 
+        # Image generation initialization
+        if not st.session_state.image_generator_initialized:
+            st.header("🎨 Image Generation")
+            if st.button("Initialize Image Generator"):
+                with st.spinner("Downloading and initializing Stable Diffusion... (This may take 3-5 minutes on first run)"):
+                    try:
+                        st.session_state.image_generator = M1OptimizedGenerator()
+                        st.session_state.image_generator_initialized = True
+                        st.success("✅ Image generation ready!")
+                    except Exception as e:
+                        st.error(f"Error initializing image generator: {str(e)}")
+        else:
+            st.header("🎨 Image Settings")
+            image_settings = {
+                'height': st.slider("Image Height", 256, 512, 384, 128),
+                'width': st.slider("Image Width", 256, 512, 384, 128),
+                'num_inference_steps': st.slider("Quality (Steps)", 15, 25, 20, 5),
+                'guidance_scale': st.slider("Creativity", 1.0, 20.0, 7.5, 0.5)
+            }
+
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.header("🎯 Generate Post")
+        st.header("🎯 Generate Post & Image")
         post_topic = st.text_area("What would you like to post about?")
         
-        if post_topic and st.button("Generate Post"):
+        generate_image = st.checkbox(
+            "Generate matching image", 
+            value=False,
+            disabled=not st.session_state.image_generator_initialized,
+            help="Initialize image generator first to enable this option"
+        )
+        
+        if post_topic and st.button("Generate Content"):
             with st.spinner("Generating post..."):
                 try:
                     post = st.session_state.generator.generate_post(post_topic)
-                    st.text_area("Generated Post", value=post, height=300)
+                    st.text_area("Generated Post", value=post, height=200)
                     
-                    if st.button("📋 Copy to Clipboard"):
+                    if generate_image and st.session_state.image_generator_initialized:
+                        image = st.session_state.image_generator.generate_image(
+                            prompt=post,
+                            **image_settings
+                        )
+                        
+                        if image:
+                            st.image(image, caption="Generated Image for Post")
+                            os.makedirs("generated_images", exist_ok=True)
+                            timestamp = torch.rand(1).item()
+                            filename = f"linkedin_post_{timestamp:.3f}.png"
+                            image.save(os.path.join("generated_images", filename))
+                            st.success(f"Image saved as {filename}")
+                    
+                    if st.button("📋 Copy Post"):
                         st.write("Post copied to clipboard!")
                         
                 except Exception as e:
-                    st.error(f"Error generating post: {str(e)}")
+                    st.error(f"Error generating content: {str(e)}")
 
     with col2:
         st.header("💬 Chat with PDF")
@@ -243,7 +363,6 @@ def main():
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
-        # Display chat history
         if st.session_state.chat_history:
             st.write("Chat History:")
             for role, message in st.session_state.chat_history:
