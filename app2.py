@@ -184,6 +184,13 @@ class SimplePostGenerator:
             raise
 
 def main():
+
+    st.set_page_config(
+        page_title="LinkedIn Post Generator",
+        page_icon="📱",
+        layout="wide"
+
+    )
     st.title("📱 LinkedIn Post Generator & PDF Chat")
     
     if 'generator' not in st.session_state:
