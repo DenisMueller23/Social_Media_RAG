@@ -163,7 +163,6 @@ class M1ResourceMonitor:
     @staticmethod
     def cleanup():
         try:
-            # Check if MPS is available using hasattr
             if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
                 torch.mps.empty_cache()
             gc.collect()
@@ -178,7 +177,7 @@ class M1OptimizedGenerator:
         self.pipe = None
         self.resource_monitor = M1ResourceMonitor()
         self.setup_pipeline()
-
+        
     def _get_device(self):
         """Determine the best available device"""
         if hasattr(torch, 'mps') and torch.backends.mps.is_available():
@@ -216,17 +215,44 @@ class M1OptimizedGenerator:
             st.error(f"Setup error: {str(e)}")
             raise
 
-    def generate_image(self, prompt: str, height: int = 512, width: int = 512, 
-                      num_inference_steps: int = 20, guidance_scale: float = 7.5):
-        """Generate image with M1 optimization and memory management"""
+    def generate_image_with_custom_prompt(self, base_post: str, custom_prompt: str = None, 
+                                        style_prompt: str = None, modifiers: list = None,
+                                        height: int = 512, width: int = 512, 
+                                        num_inference_steps: int = 20, 
+                                        guidance_scale: float = 7.5):
+        """
+        Generate image with custom prompting options and modifiers
+        """
         try:
             if not self.resource_monitor.check_memory():
                 self.resource_monitor.cleanup()
                 
+            # Construct the final prompt with modifiers
+            prompt_parts = []
+            
+            # Add custom prompt or extract from base post
+            if custom_prompt:
+                prompt_parts.append(custom_prompt)
+            else:
+                prompt_parts.append(self._extract_key_topics(base_post))
+                
+            # Add style prompt if provided
+            if style_prompt:
+                prompt_parts.append(style_prompt)
+                
+            # Add modifiers if provided
+            if modifiers:
+                # Filter out empty modifiers
+                valid_modifiers = [mod.strip() for mod in modifiers if mod.strip()]
+                if valid_modifiers:
+                    prompt_parts.append(", ".join(valid_modifiers))
+            
+            final_prompt = ". ".join(filter(None, prompt_parts))
+                
             with st.spinner("🎨 Generating image (1-2 minutes)..."):
                 try:
                     image = self.pipe(
-                        prompt=prompt,
+                        prompt=final_prompt,
                         height=min(height, 512),
                         width=min(width, 512),
                         num_inference_steps=min(num_inference_steps, 25),
@@ -234,23 +260,29 @@ class M1OptimizedGenerator:
                     ).images[0]
                     
                     self.resource_monitor.cleanup()
-                    return image
+                    return image, final_prompt
                     
                 except RuntimeError as e:
                     st.warning("⚠️ Attempting memory recovery...")
                     self.resource_monitor.cleanup()
                     
                     return self.pipe(
-                        prompt=prompt,
+                        prompt=final_prompt,
                         height=384,
                         width=384,
                         num_inference_steps=15,
                         guidance_scale=guidance_scale
-                    ).images[0]
+                    ).images[0], final_prompt
                 
         except Exception as e:
             st.error(f"Generation error: {str(e)}")
-            return None
+            return None, None
+            
+    def _extract_key_topics(self, text: str, max_length: int = 100) -> str:
+        """Extract key topics from text for image generation"""
+        # Simple extraction of first sentence or paragraph
+        text = text.strip().split('\n')[0].split('.')[0]
+        return text[:max_length]
 
 def main():
     st.set_page_config(
@@ -273,6 +305,14 @@ def main():
     # Defer image generation initialization
     if 'image_generator_initialized' not in st.session_state:
         st.session_state.image_generator_initialized = False
+
+    # Initialize image_settings
+    image_settings = {
+        'height': 384,
+        'width': 384,
+        'num_inference_steps': 20,
+        'guidance_scale': 7.5
+    }
 
     with st.sidebar:
         st.header("📄 Document Upload")
@@ -305,25 +345,58 @@ def main():
                         st.error(f"Error initializing image generator: {str(e)}")
         else:
             st.header("🎨 Image Settings")
-            image_settings = {
+            image_settings.update({
                 'height': st.slider("Image Height", 256, 512, 384, 128),
                 'width': st.slider("Image Width", 256, 512, 384, 128),
                 'num_inference_steps': st.slider("Quality (Steps)", 15, 25, 20, 5),
                 'guidance_scale': st.slider("Creativity", 1.0, 20.0, 7.5, 0.5)
-            }
+            })
 
-    col1, col2 = st.columns([1, 1])
+    # Define the main layout columns
+    left_col, right_col = st.columns([1, 1])
 
-    with col1:
+    # Left column content
+    with left_col:
         st.header("🎯 Generate Post & Image")
         post_topic = st.text_area("What would you like to post about?")
         
+        # Image generation section
         generate_image = st.checkbox(
             "Generate matching image", 
             value=False,
             disabled=not st.session_state.image_generator_initialized,
             help="Initialize image generator first to enable this option"
         )
+        
+        if generate_image:
+            with st.expander("🎨 Image Generation Controls", expanded=True):
+                custom_prompt = st.text_area(
+                    "Custom image prompt (optional)",
+                    help="Specify exactly what you want in the image. Leave empty to generate from post content.",
+                    placeholder="e.g., 'A professional workspace with a laptop and coffee cup'"
+                )
+                
+                style_prompt = st.text_area(
+                    "Style prompt (optional)",
+                    help="Specify artistic style, mood, or technical details",
+                    placeholder="e.g., 'Professional photography, soft lighting, muted colors, 4K, highly detailed'"
+                )
+                
+                # New modifier section
+                st.subheader("🔧 Image Modifiers")
+                num_modifiers = st.number_input("Number of modifiers", min_value=0, max_value=5, value=0)
+                modifiers = []
+                
+                if num_modifiers > 0:
+                    modifier_cols = st.columns(2)
+                    for i in range(num_modifiers):
+                        with modifier_cols[i % 2]:
+                            modifier = st.text_input(
+                                f"Modifier {i+1}",
+                                placeholder=f"e.g., 'high contrast', 'cinematic lighting', 'bokeh effect'",
+                                key=f"modifier_{i}"
+                            )
+                            modifiers.append(modifier)
         
         if post_topic and st.button("Generate Content"):
             with st.spinner("Generating post..."):
@@ -332,13 +405,20 @@ def main():
                     st.text_area("Generated Post", value=post, height=200)
                     
                     if generate_image and st.session_state.image_generator_initialized:
-                        image = st.session_state.image_generator.generate_image(
-                            prompt=post,
+                        image, final_prompt = st.session_state.image_generator.generate_image_with_custom_prompt(
+                            base_post=post,
+                            custom_prompt=custom_prompt if custom_prompt else None,
+                            style_prompt=style_prompt if style_prompt else None,
+                            modifiers=modifiers if modifiers else None,
                             **image_settings
                         )
                         
                         if image:
-                            st.image(image, caption="Generated Image for Post")
+                            with st.expander("🎨 Image Generation Details", expanded=True):
+                                st.write("**Final prompt used:**")
+                                st.code(final_prompt)
+                                st.image(image, caption="Generated Image for Post")
+                                
                             os.makedirs("generated_images", exist_ok=True)
                             timestamp = torch.rand(1).item()
                             filename = f"linkedin_post_{timestamp:.3f}.png"
@@ -351,7 +431,8 @@ def main():
                 except Exception as e:
                     st.error(f"Error generating content: {str(e)}")
 
-    with col2:
+    # Right column content
+    with right_col:
         st.header("💬 Chat with PDF")
         question = st.text_input("Ask about your document:")
         
