@@ -16,7 +16,6 @@ class SimplePostGenerator:
             model="gpt-3.5-turbo",
             temperature=0.7
         )
-        # Updated memory configuration with output_key
         self.memory = ConversationBufferMemory(
             memory_key="chat_history",
             output_key="answer",
@@ -62,7 +61,7 @@ class SimplePostGenerator:
             raise
 
     def generate_post(self, query, context=None):
-        """Generate LinkedIn post with document context"""
+        """Generate LinkedIn post with neutral perspective"""
         try:
             if self.vector_store:
                 relevant_docs = self.vector_store.similarity_search(query, k=3)
@@ -70,37 +69,72 @@ class SimplePostGenerator:
                 
                 prompt = f"""
                 Create an engaging LinkedIn post about: {query}
-                
-                Using context from the document:
+
+                Use these insights from the provided context:
                 {context}
+
+                Important guidelines:
+                1. Present insights directly
+                2. Do NOT mention or reference that these insights come from a paper, report, research, or any other document type
+                3. Write as if you are sharing your professional knowledge while using a LinkedIn friendly layout
+                4. Focus on the facts and insights themselves
+                5. Start with an attention-grabbing statement about the topic that always includes a fitting emoji
+                6. Include 2-3 concrete insights or findings
+                7. End with a thought-provoking question or call-to-action
+                8. Add relevant hashtags
+                9. Keep it under 3 paragraphs
                 
-                Guidelines:
-                1. Start with an attention-grabbing hook
-                2. Include 2-3 key points from the document
-                3. End with a call-to-action
-                4. Add relevant hashtags
-                Keep it professional and under 3 paragraphs.
+                Example format:
+                [Attention-grabbing statement about the topic]
+                
+                [Key insight 1 presented as a direct observation]
+                [Key insight 2 presented as industry knowledge]
+                
+                [Engaging question for the audience] #relevanthashtag1 #relevanthashtag2
+
+                Remember: Maintain a professional tone but write as if sharing personal industry knowledge, not summarizing a document.
                 """
             else:
                 prompt = f"""
                 Create an engaging LinkedIn post about: {query}
                 
                 Guidelines:
-                1. Start with an attention-grabbing hook
-                2. Include 2-3 key points
-                3. End with a call-to-action
+                1. Start with an attention-grabbing statement
+                2. Share 2-3 key insights as direct professional knowledge
+                3. End with an engaging question or call-to-action
                 4. Add relevant hashtags
-                Keep it professional and under 3 paragraphs.
+                5. Keep it professional and under 3 paragraphs
+                6. Present information as industry expertise
                 """
             
             response = self.llm.predict(prompt)
+            
+            # Additional check to remove any reference to papers or research
+            forbidden_terms = ['paper', 'research', 'study', 'report', 'analysis', 'findings', 'document']
+            response_lower = response.lower()
+            
+            if any(term in response_lower for term in forbidden_terms):
+                # If forbidden terms are found, regenerate with stricter prompt
+                strict_prompt = f"""
+                Rewrite this LinkedIn post removing any reference to papers, research, studies, or documents:
+
+                {response}
+
+                Requirements:
+                1. Present all insights as direct professional knowledge
+                2. Remove any academic or research-related language
+                3. Maintain the same key points but express them as industry observations
+                4. Keep the engaging and professional tone
+                """
+                response = self.llm.predict(strict_prompt)
+            
             return response
         except Exception as e:
             st.error(f"Error in post generation: {str(e)}")
             raise
 
     def chat_with_pdf(self, query):
-        """Enhanced PDF chat with better context retrieval"""
+        """Chat with PDF content"""
         if not self.vector_store:
             return "Please upload and process a PDF first."
 
@@ -168,7 +202,6 @@ def main():
                     try:
                         text = st.session_state.generator.process_pdf(uploaded_file)
                         st.success("PDF processed successfully!")
-                        # Clear chat history when new document is processed
                         st.session_state.chat_history = []
                     except Exception as e:
                         st.error(f"Error processing PDF: {str(e)}")
@@ -183,7 +216,11 @@ def main():
             with st.spinner("Generating post..."):
                 try:
                     post = st.session_state.generator.generate_post(post_topic)
-                    st.text_area("Generated Post", post, height=300)
+                    st.text_area("Generated Post", value=post, height=300)
+                    
+                    if st.button("📋 Copy to Clipboard"):
+                        st.write("Post copied to clipboard!")
+                        
                 except Exception as e:
                     st.error(f"Error generating post: {str(e)}")
 
